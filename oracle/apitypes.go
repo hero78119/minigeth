@@ -1,5 +1,5 @@
-//go:build !mips
-// +build !mips
+//go:build !riscv64
+// +build !riscv64
 
 package oracle
 

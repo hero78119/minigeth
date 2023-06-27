@@ -1,5 +1,5 @@
-//go:build !mips
-// +build !mips
+//go:build !riscv64
+// +build !riscv64
 
 package oracle
 
@@ -102,7 +102,7 @@ func cacheExists(key string) bool {
 	return err == nil
 }
 
-func cacheWrite(key string, value []byte) {
+func logMsg(key string, value []byte) {
 	ioutil.WriteFile(toFilename(key), value, 0644)
 }
 
@@ -114,7 +114,7 @@ func getAPI(jsonData []byte) io.Reader {
 	resp, _ := http.Post(nodeUrl, "application/json", bytes.NewBuffer(jsonData))
 	defer resp.Body.Close()
 	ret, _ := ioutil.ReadAll(resp.Body)
-	cacheWrite(key, ret)
+	logMsg(key, ret)
 	return bytes.NewReader(ret)
 }
 
@@ -252,7 +252,6 @@ func prefetchUncles(blockHash common.Hash, uncleHash common.Hash, hasher types.T
 	if hash != uncleHash {
 		panic("wrong uncle hash")
 	}
-
 	preimages[hash] = unclesRlp
 }
 
@@ -279,7 +278,7 @@ func PrefetchBlock(blockNumber *big.Int, startBlock bool, hasher types.TrieHashe
 		hash := crypto.Keccak256Hash(blockHeaderRlp)
 		preimages[hash] = blockHeaderRlp
 		emptyHash := common.Hash{}
-		if inputs[0] == emptyHash {
+		if inputs[0] == emptyHash { // prev block header rlp
 			inputs[0] = hash
 		}
 		return
@@ -301,7 +300,7 @@ func PrefetchBlock(blockNumber *big.Int, startBlock bool, hasher types.TrieHashe
 	for i := 0; i < len(inputs); i++ {
 		saveinput = append(saveinput, inputs[i].Bytes()[:]...)
 	}
-	inputhash = crypto.Keccak256Hash(saveinput)
+	inputhash = crypto.Keccak256Hash(saveinput) // save input is update here
 	preimages[inputhash] = saveinput
 	ioutil.WriteFile(fmt.Sprintf("%s/input", root), inputhash.Bytes(), 0644)
 	//ioutil.WriteFile(fmt.Sprintf("%s/input", root), saveinput, 0644)

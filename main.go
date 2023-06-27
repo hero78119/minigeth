@@ -37,26 +37,30 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	// non mips
+	// amd64
 	if len(os.Args) > 1 {
-		newNodeUrl, setNewNodeUrl := os.LookupEnv("NODE")
-		if setNewNodeUrl {
-			fmt.Println("override node url", newNodeUrl)
-			oracle.SetNodeUrl(newNodeUrl)
-		}
+		blockNumber, _ := strconv.Atoi(os.Args[1])
 		basedir := os.Getenv("BASEDIR")
 		if len(basedir) == 0 {
 			basedir = "/tmp/cannon"
 		}
 
+		// TODO: get the chainid
+		oracle.SetRoot(fmt.Sprintf("%s/0_%d", basedir, blockNumber))
+		oracle.SetupMemoryDataFile()
+		defer oracle.CloseFile()
+		newNodeUrl, setNewNodeUrl := os.LookupEnv("NODE")
+		if setNewNodeUrl {
+			fmt.Println("override node url", newNodeUrl)
+			oracle.SetNodeUrl(newNodeUrl)
+		}
+
 		pkw := oracle.PreimageKeyValueWriter{}
 		pkwtrie := trie.NewStackTrie(pkw)
 
-		blockNumber, _ := strconv.Atoi(os.Args[1])
-		// TODO: get the chainid
-		oracle.SetRoot(fmt.Sprintf("%s/0_%d", basedir, blockNumber))
 		oracle.PrefetchBlock(big.NewInt(int64(blockNumber)), true, nil)
 		oracle.PrefetchBlock(big.NewInt(int64(blockNumber)+1), false, pkwtrie)
+		oracle.WriteInputHash(oracle.InputHash())
 		hash, err := pkwtrie.Commit()
 		check(err)
 		fmt.Println("committed transactions", hash, err)
@@ -67,21 +71,24 @@ func main() {
 
 	// get inputs
 	inputBytes := oracle.Preimage(oracle.InputHash())
+	os.Stderr.WriteString("processed inputBytes\n")
 	var inputs [6]common.Hash
 	for i := 0; i < len(inputs); i++ {
 		inputs[i] = common.BytesToHash(inputBytes[i*0x20 : i*0x20+0x20])
 	}
+	os.Stderr.WriteString("finish common hash processing\n")
 
 	// read start block header
 	var parent types.Header
 	check(rlp.DecodeBytes(oracle.Preimage(inputs[0]), &parent))
+	os.Stderr.WriteString("decoded rlp\n")
 
 	// read header
 	var newheader types.Header
 	// from parent
 	newheader.ParentHash = parent.Hash()
 	newheader.Number = big.NewInt(0).Add(parent.Number, big.NewInt(1))
-	newheader.BaseFee = misc.CalcBaseFee(params.MainnetChainConfig, &parent)
+	newheader.BaseFee = misc.CalcBaseFee(params.TestChainConfig, &parent)
 
 	// from input oracle
 	newheader.TxHash = inputs[1]
@@ -94,7 +101,7 @@ func main() {
 	database := state.NewDatabase(parent)
 	statedb, _ := state.New(parent.Root, database, nil)
 	vmconfig := vm.Config{}
-	processor := core.NewStateProcessor(params.MainnetChainConfig, bc, bc.Engine())
+	processor := core.NewStateProcessor(params.TestChainConfig, bc, bc.Engine())
 	fmt.Println("processing state:", parent.Number, "->", newheader.Number)
 
 	newheader.Difficulty = bc.Engine().CalcDifficulty(bc, newheader.Time, &parent)
@@ -152,5 +159,5 @@ func main() {
 
 	fmt.Println("receipt count", len(receipts), "hash", receiptSha)
 	fmt.Println("process done with hash", parent.Root, "->", newroot)
-	oracle.Output(newroot, receiptSha)
+	// oracle.Output(newroot, receiptSha)
 }
